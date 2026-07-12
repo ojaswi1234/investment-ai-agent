@@ -1,11 +1,11 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
   Search, Hexagon, Settings, Key, Cpu, Sparkles,
   TrendingUp, TrendingDown, ArrowRight, Activity,
-  Globe, ShieldAlert, BarChart3, Users, MessageCircle, AlertTriangle, Info, CheckCircle2, XCircle, Check
+  Globe, ShieldAlert, BarChart3, Users, MessageCircle, AlertTriangle, Info, CheckCircle2, XCircle, Check, FileText
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 
@@ -132,7 +132,7 @@ export default function Home() {
   const [result, setResult] = useState<ResearchResult | null>(null);
   const [watchlist, setWatchlist] = useState<string[]>([]);
   const [history, setHistory] = useState<any[]>([]);
-  const [activeTab, setActiveTab] = useState<'research' | 'compare' | 'watchlist' | 'history' | 'settings'>('research');
+  const [activeTab, setActiveTab] = useState<'research' | 'compare' | 'watchlist' | 'history' | 'rag' | 'settings'>('research');
   
   const [apiKey, setApiKey] = useState('');
   const [selectedModel, setSelectedModel] = useState('llama-3.3-70b-versatile');
@@ -146,6 +146,41 @@ export default function Home() {
 
   const [compareCompanies, setCompareCompanies] = useState<string[]>([]);
   const [compareResult, setCompareResult] = useState<any>(null);
+
+  const detectAnomalies = (metrics: any[]) => {
+    if (!metrics || metrics.length < 3) return null;
+    const anomalies: any[] = [];
+    const checkMetric = (key: string, name: string) => {
+      const values = metrics.map(m => m[key]).filter(v => typeof v === 'number');
+      if (values.length < 3) return;
+      const mean = values.reduce((a, b) => a + b) / values.length;
+      const variance = values.reduce((a, b) => a + Math.pow(b - mean, 2), 0) / values.length;
+      const stdDev = Math.sqrt(variance);
+      if (stdDev === 0) return;
+      metrics.forEach(m => {
+        if (typeof m[key] === 'number') {
+          const zScore = Math.abs(m[key] - mean) / stdDev;
+          if (zScore > 1.15) {
+            anomalies.push({
+              company: m.company,
+              metric: name,
+              value: m[key],
+              mean: mean.toFixed(2),
+              zScore: zScore.toFixed(2)
+            });
+          }
+        }
+      });
+    };
+    checkMetric('pe_ratio', 'P/E Ratio');
+    checkMetric('debt_to_equity', 'Debt-to-Equity');
+    checkMetric('profit_margin', 'Profit Margin (%)');
+    return anomalies.length > 0 ? anomalies : null;
+  };
+
+  const anomalies = useMemo(() => {
+    return compareResult?.quantitative_metrics ? detectAnomalies(compareResult.quantitative_metrics) : null;
+  }, [compareResult]);
 
   const fetchAnalysis = async (query: string) => {
     if (!query.trim()) return;
@@ -294,6 +329,7 @@ export default function Home() {
     { id: 'research', label: 'Research' },
     { id: 'compare', label: 'Compare' },
     { id: 'watchlist', label: 'Watchlist', count: watchlist.length },
+    { id: 'rag', label: 'Doc RAG' },
     { id: 'history', label: 'History' },
     { id: 'settings', label: 'Settings' },
   ];
@@ -645,6 +681,26 @@ export default function Home() {
                 <h3 className="text-2xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-indigo-400 to-emerald-400 mb-8">Comparison Results</h3>
                 
                 <div className="grid md:grid-cols-2 gap-8">
+                  {anomalies && (
+                    <div className="md:col-span-2 glass-panel p-5 rounded-xl border border-red-500/30 bg-red-500/10 mb-4">
+                      <h4 className="font-bold text-red-400 mb-3 flex items-center gap-2">
+                        <AlertTriangle size={18} /> ML Anomaly Detected (Z-Score Clustering)
+                      </h4>
+                      <p className="text-sm text-slate-300 mb-3">Our statistical anomaly detection algorithm flagged the following irregular financial behaviors compared to the peer cluster:</p>
+                      <ul className="space-y-2">
+                        {anomalies.map((anomaly, index) => (
+                          <li key={index} className="text-sm text-slate-300 flex items-start gap-2">
+                            <span className="text-red-500 mt-1">⚠️</span>
+                            <span>
+                              <strong>{anomaly.company}</strong> has an abnormal <strong>{anomaly.metric}</strong> of {anomaly.value}. 
+                              (Cluster Mean: {anomaly.mean}, Z-Score: {anomaly.zScore}σ)
+                            </span>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+
                   <div>
                     <h4 className="font-semibold text-slate-300 mb-4 flex items-center gap-2"><TrendingUp size={18}/> Overall Ranking</h4>
                     <div className="space-y-3">
@@ -726,6 +782,63 @@ export default function Home() {
                 ))}
               </ul>
             )}
+          </motion.div>
+        )}
+
+        {/* Doc RAG Tab */}
+        {activeTab === 'rag' && (
+          <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="glass-panel p-6 sm:p-8 rounded-2xl max-w-3xl mx-auto">
+            <h3 className="text-xl font-bold text-slate-200 mb-2 flex items-center gap-2"><FileText size={20}/> Chat with SEC Filings</h3>
+            <p className="text-sm text-slate-400 mb-6">Upload a 10-K or Annual Report PDF to extract context using local ML Embeddings and query it with LLM RAG.</p>
+            
+            <form onSubmit={async (e: any) => {
+              e.preventDefault();
+              const form = e.target;
+              const file = form.file.files[0];
+              const query = form.query.value;
+              if (!file || !query) { toast.error("Please provide a file and a query"); return; }
+              setLoading(true);
+              try {
+                const formData = new FormData();
+                formData.append('file', file);
+                formData.append('query', query);
+                formData.append('apiKey', apiKey);
+                formData.append('model', selectedModel);
+                
+                const res = await fetch('/api/rag', { method: 'POST', body: formData });
+                const data = await res.json();
+                if(data.error) throw new Error(data.error);
+                
+                toast.success(`Answer generated using ${data.retrieved_chunks} document chunks`);
+                // Render the answer
+                const answerDiv = document.getElementById('rag-answer');
+                if(answerDiv) answerDiv.innerHTML = data.answer.replace(/\n/g, '<br/>');
+                
+              } catch(e:any) {
+                toast.error(e.message || "RAG failed");
+              } finally {
+                setLoading(false);
+              }
+            }} className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-slate-300 mb-2">Upload PDF Document</label>
+                <input type="file" name="file" accept="application/pdf" className="w-full text-sm text-slate-400 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-indigo-500/20 file:text-indigo-300 hover:file:bg-indigo-500/30" />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-slate-300 mb-2">Your Question</label>
+                <textarea name="query" rows={3} placeholder="E.g., What are the key risk factors mentioned?" className="w-full bg-white/5 border border-white/10 rounded-xl p-3 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/30"></textarea>
+              </div>
+              <button type="submit" disabled={loading} className="w-full py-3 bg-gradient-to-r from-indigo-600 to-violet-600 rounded-xl text-sm font-medium hover:brightness-110 transition-all disabled:opacity-50">
+                {loading ? 'Analyzing Document (Running Embeddings)...' : 'Ask Document'}
+              </button>
+            </form>
+            
+            <div className="mt-8 border-t border-white/10 pt-6">
+              <h4 className="font-semibold text-slate-300 mb-3">AI Answer:</h4>
+              <div id="rag-answer" className="text-slate-400 text-sm leading-relaxed bg-white/5 p-4 rounded-xl border border-white/5 min-h-[100px]">
+                Your answer will appear here...
+              </div>
+            </div>
           </motion.div>
         )}
 

@@ -24,6 +24,14 @@ Format your response as JSON:
     "overall_ranking": ["Company1", "Company2"],
     "investment_recommendation": "Which company to invest in and why"
   },
+  "quantitative_metrics": [
+    {
+      "company": "Company1",
+      "pe_ratio": 25.5,
+      "debt_to_equity": 1.2,
+      "profit_margin": 15.4
+    }
+  ],
   "key_differences": ["difference1", "difference2"],
   "similarities": ["similarity1", "similarity2"]
 }
