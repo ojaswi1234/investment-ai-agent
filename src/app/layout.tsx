@@ -1,5 +1,7 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
+import { Toaster } from "react-hot-toast";
+import AnimatedBackground from "@/components/AnimatedBackground";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -25,9 +27,25 @@ export default function RootLayout({
   return (
     <html
       lang="en"
-      className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
+      suppressHydrationWarning
+      className={`${geistSans.variable} ${geistMono.variable} h-full antialiased dark`}
     >
-      <body className="min-h-full flex flex-col">{children}</body>
+      <body className="min-h-full flex flex-col relative bg-[#030305] text-white">
+          <AnimatedBackground />
+          <Toaster 
+            position="bottom-right"
+            toastOptions={{
+              className: 'glass-panel text-white',
+              style: {
+                background: 'rgba(15, 15, 20, 0.9)',
+                color: '#fff',
+                backdropFilter: 'blur(10px)',
+                border: '1px solid rgba(255, 255, 255, 0.1)'
+              }
+            }}
+          />
+          {children}
+      </body>
     </html>
   );
 }

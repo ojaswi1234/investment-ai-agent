@@ -2,11 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { ChatGroq } from '@langchain/groq';
 import { HumanMessage } from '@langchain/core/messages';
 
-const llm = new ChatGroq({
-  model: 'llama-3.3-70b-versatile',
-  temperature: 0.7,
-  apiKey: process.env.GROQ_API_KEY,
-});
+// LLM will be instantiated dynamically per request
 
 const researchPrompt = `You are an investment analyst. Analyze this company and give a comprehensive investment recommendation.
 
@@ -87,11 +83,20 @@ Analyze the company based on your knowledge. Include realistic estimates for met
 
 export async function POST(request: NextRequest) {
   try {
-    const { companyName } = await request.json();
+    const { companyName, apiKey, model } = await request.json();
 
     if (!companyName) {
       return NextResponse.json({ error: 'Company name is required' }, { status: 400 });
     }
+    if (!apiKey) {
+      return NextResponse.json({ error: 'Groq API Key is required. Please set it in the Settings tab.' }, { status: 401 });
+    }
+
+    const llm = new ChatGroq({
+      model: model || 'llama-3.3-70b-versatile',
+      temperature: 0.7,
+      apiKey: apiKey,
+    });
 
     const prompt = `${researchPrompt}\n\nAnalyze this company: ${companyName}`;
     const response = await llm.invoke([new HumanMessage(prompt)]);
