@@ -2,6 +2,9 @@ import { NextRequest, NextResponse } from 'next/server';
 import { ChatGroq } from '@langchain/groq';
 import { HumanMessage } from '@langchain/core/messages';
 
+export const dynamic = 'force-dynamic';
+export const maxDuration = 60; // Allow maximum serverless execution time for large PDFs
+
 if (typeof global !== 'undefined') {
   if (!(global as any).DOMMatrix) (global as any).DOMMatrix = class {};
   if (!(global as any).Path2D) (global as any).Path2D = class {};
@@ -16,7 +19,11 @@ let extractor: any = null;
 async function getExtractor() {
   if (!extractor) {
     // Lazy load the embedding pipeline
-    const { pipeline } = await import('@xenova/transformers');
+    const transformers: any = await import('@xenova/transformers');
+    const pipeline = transformers.pipeline || transformers.default?.pipeline;
+    if (!pipeline) {
+      throw new Error("Failed to load transformers pipeline");
+    }
     extractor = await pipeline('feature-extraction', 'Xenova/all-MiniLM-L6-v2');
   }
   return extractor;
@@ -57,9 +64,25 @@ export async function POST(request: NextRequest) {
 
     // 2. Chunking
     const chunkSize = 1000;
-    const chunks: string[] = [];
+    const rawChunks: string[] = [];
     for (let i = 0; i < text.length; i += chunkSize) {
-      chunks.push(text.substring(i, i + chunkSize));
+      rawChunks.push(text.substring(i, i + chunkSize));
+    }
+
+    // 2.5 Lexical Pre-filtering (Remove useless data before ML embedding)
+    const stopWords = new Set(['the', 'and', 'is', 'in', 'it', 'of', 'to', 'for', 'with', 'on', 'at', 'from', 'by', 'about', 'as', 'a', 'an', 'what', 'how', 'why', 'who', 'when', 'where', 'are', 'was', 'were', 'does', 'do', 'did', 'has', 'have', 'had', 'company', 'corporation', 'inc', 'ltd', 'report', 'annual', 'document', 'this']);
+    const queryWords = query.toLowerCase().replace(/[^a-z0-9\s]/g, '').split(/\s+/).filter(w => w.length > 3 && !stopWords.has(w));
+    
+    let chunks = rawChunks;
+    if (queryWords.length > 0) {
+      const filtered = rawChunks.filter(chunk => {
+        const lowerChunk = chunk.toLowerCase();
+        return queryWords.some(word => lowerChunk.includes(word));
+      });
+      // Fallback if filter is too aggressive
+      if (filtered.length > 0) {
+        chunks = filtered;
+      }
     }
 
     // 3. Generate Embeddings (Local ML)
@@ -69,16 +92,21 @@ export async function POST(request: NextRequest) {
     const queryOutput = await extract(query, { pooling: 'mean', normalize: true });
     const queryEmbedding = Array.from(queryOutput.data);
 
-    // Score chunks
-    // To save time in serverless, we'll only embed the first 50 chunks (approx 50k chars) if it's huge
-    const maxChunks = Math.min(chunks.length, 50);
+    // Score chunks using batched processing for massive documents
     const scoredChunks = [];
+    const batchSize = 32;
 
-    for (let i = 0; i < maxChunks; i++) {
-      const chunkOutput = await extract(chunks[i], { pooling: 'mean', normalize: true });
-      const chunkEmbedding = Array.from(chunkOutput.data);
-      const score = cosineSimilarity(queryEmbedding as number[], chunkEmbedding as number[]);
-      scoredChunks.push({ text: chunks[i], score });
+    for (let i = 0; i < chunks.length; i += batchSize) {
+      const batch = chunks.slice(i, i + batchSize);
+      
+      // Extract embeddings for the entire batch at once
+      const batchOutput = await extract(batch, { pooling: 'mean', normalize: true });
+      const batchEmbeddings = batchOutput.tolist(); // Converts Tensor to 2D array [batch_size, embed_dim]
+
+      for (let j = 0; j < batch.length; j++) {
+        const score = cosineSimilarity(queryEmbedding as number[], batchEmbeddings[j]);
+        scoredChunks.push({ text: batch[j], score });
+      }
     }
 
     // 4. Retrieve Top 3
