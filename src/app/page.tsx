@@ -975,7 +975,7 @@ export default function Home() {
                     const res = await fetch('/api/cache', { method: 'DELETE' });
                     const data = await res.json();
                     if(data.success) {
-                      toast.success(data.message);
+                      toast.success('Server memory and caches successfully wiped to prevent OOM.');
                     } else {
                       throw new Error('Failed to clear cache');
                     }
