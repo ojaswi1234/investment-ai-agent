@@ -39,7 +39,26 @@ const getStockData = new DynamicStructuredTool({
     try {
       const quote = await yahooFinance.quote(ticker);
       const metrics = await yahooFinance.quoteSummary(ticker, { modules: ["financialData", "defaultKeyStatistics"] });
-      return JSON.stringify({ quote, metrics });
+      
+      const cleanData = {
+        symbol: quote.symbol,
+        price: quote.regularMarketPrice,
+        currency: quote.currency,
+        marketCap: quote.marketCap,
+        peRatio: quote.trailingPE || quote.forwardPE,
+        eps: quote.epsTrailingTwelveMonths,
+        profitMargin: metrics.financialData?.profitMargins,
+        operatingMargin: metrics.financialData?.operatingMargins,
+        returnOnAssets: metrics.financialData?.returnOnAssets,
+        returnOnEquity: metrics.financialData?.returnOnEquity,
+        revenueGrowth: metrics.financialData?.revenueGrowth,
+        freeCashflow: metrics.financialData?.freeCashflow,
+        debtToEquity: metrics.financialData?.debtToEquity,
+        currentRatio: metrics.financialData?.currentRatio,
+        fiftyTwoWeekHigh: quote.fiftyTwoWeekHigh,
+        fiftyTwoWeekLow: quote.fiftyTwoWeekLow
+      };
+      return JSON.stringify(cleanData);
     } catch (e: any) {
       return `Failed to fetch stock data: ${e.message}`;
     }
@@ -101,8 +120,8 @@ export async function POST(request: NextRequest) {
     const llmWithTools = llm.bindTools(tools);
     
     let messages: any[] = [
-      new SystemMessage("You are an expert investment analyst. You MUST use your tools to gather real-time financial data, recent news, and perform accurate calculations before comparing these companies. Do not hallucinate metrics. When calling tools, ensure your arguments are valid, tightly-formatted JSON without any line breaks or markdown."),
-      new HumanMessage(`Please research and compare these companies objectively: ${companies.join(', ')}. Use your tools to look up their tickers, fetch stock data, and search recent news.`)
+          new SystemMessage("You are an expert investment analyst. You MUST use your tools to gather real-time financial data, recent news, and perform accurate calculations before comparing these companies. CRITICAL: Do not hallucinate metrics. You must extract exact numbers from the get_stock_data tool. When calling tools, ensure your arguments are valid, tightly-formatted JSON without any line breaks or markdown."),
+          new HumanMessage(`Please research and compare these companies objectively: ${companies.join(', ')}. Use your tools to look up their tickers, fetch stock data, and search recent news. Every comparison must be supported by the data you fetch.`)
     ];
 
     // Simple Agent Loop (max 5 iterations)

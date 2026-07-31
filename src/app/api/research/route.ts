@@ -6,6 +6,9 @@ import { z } from 'zod';
 import yahooFinance from 'yahoo-finance2';
 import { search } from 'duck-duck-scrape';
 
+export const dynamic = 'force-dynamic';
+export const maxDuration = 60;
+
 // 1. Define the Zod Schema for robust JSON output (No more regex parsing)
 const researchSchema = z.object({
   company: z.string(),
@@ -99,7 +102,26 @@ const getStockData = new DynamicStructuredTool({
     try {
       const quote = await yahooFinance.quote(ticker);
       const metrics = await yahooFinance.quoteSummary(ticker, { modules: ["financialData", "defaultKeyStatistics"] });
-      return JSON.stringify({ quote, metrics });
+      
+      const cleanData = {
+        symbol: quote.symbol,
+        price: quote.regularMarketPrice,
+        currency: quote.currency,
+        marketCap: quote.marketCap,
+        peRatio: quote.trailingPE || quote.forwardPE,
+        eps: quote.epsTrailingTwelveMonths,
+        profitMargin: metrics.financialData?.profitMargins,
+        operatingMargin: metrics.financialData?.operatingMargins,
+        returnOnAssets: metrics.financialData?.returnOnAssets,
+        returnOnEquity: metrics.financialData?.returnOnEquity,
+        revenueGrowth: metrics.financialData?.revenueGrowth,
+        freeCashflow: metrics.financialData?.freeCashflow,
+        debtToEquity: metrics.financialData?.debtToEquity,
+        currentRatio: metrics.financialData?.currentRatio,
+        fiftyTwoWeekHigh: quote.fiftyTwoWeekHigh,
+        fiftyTwoWeekLow: quote.fiftyTwoWeekLow
+      };
+      return JSON.stringify(cleanData);
     } catch (e: any) {
       return `Failed to fetch stock data: ${e.message}`;
     }
@@ -115,7 +137,6 @@ const webSearch = new DynamicStructuredTool({
   func: async ({ query }) => {
     try {
       const results = await search(query);
-      // Return top 3 results
       return JSON.stringify(results.results.slice(0, 3).map(r => ({ title: r.title, description: r.description, url: r.url })));
     } catch (e: any) {
       return `Search failed: ${e.message}`;
@@ -131,7 +152,6 @@ const calculator = new DynamicStructuredTool({
   }),
   func: async ({ expression }) => {
     try {
-      // Safe eval
       const result = new Function(`return ${expression}`)();
       return result.toString();
     } catch (e) {
@@ -144,75 +164,109 @@ const tools = [getStockData, webSearch, calculator];
 const toolsByName = Object.fromEntries(tools.map((t) => [t.name, t]));
 
 export async function POST(request: NextRequest) {
+  let requestData;
   try {
-    const { companyName, apiKey, model } = await request.json();
-
-    if (!companyName) {
-      return NextResponse.json({ error: 'Company name is required' }, { status: 400 });
-    }
-    if (!apiKey) {
-      return NextResponse.json({ error: 'Groq API Key is required. Please set it in the Settings tab.' }, { status: 401 });
-    }
-
-    const llm = new ChatGroq({
-      model: model || 'llama-3.3-70b-versatile',
-      temperature: 0.1, // low temp for analytical accuracy
-      apiKey: apiKey,
-    });
-
-    const llmWithTools = llm.bindTools(tools);
-    
-    let messages: any[] = [
-      new SystemMessage("You are an expert investment analyst. You MUST use your tools to gather real-time financial data, recent news, and perform accurate calculations before making an investment recommendation. Do not hallucinate metrics. When calling tools, ensure your arguments are valid, tightly-formatted JSON without any line breaks or markdown."),
-      new HumanMessage(`Please research and analyze this company: ${companyName}. Use your tools to look up the ticker, fetch stock data, search recent news, and calculate metrics.`)
-    ];
-
-    // Simple Agent Loop (max 5 iterations)
-    for (let i = 0; i < 5; i++) {
-      let aiMsg;
-      try {
-        aiMsg = await llmWithTools.invoke(messages);
-      } catch (e: any) {
-        console.warn("Groq Tool Invocation Error, retrying...", e.message);
-        // If Groq fails to parse the tool call (tool_use_failed), retry once
-        try {
-           aiMsg = await llmWithTools.invoke(messages);
-        } catch (retryErr: any) {
-           console.error("Tool invocation failed twice. Proceeding to final output.");
-           break;
-        }
-      }
-
-      if (aiMsg) messages.push(aiMsg);
-
-      if (!aiMsg?.tool_calls || aiMsg.tool_calls.length === 0) {
-        break; // LLM has finished gathering info
-      }
-
-      for (const toolCall of aiMsg.tool_calls) {
-        const selectedTool = toolsByName[toolCall.name];
-        let toolResult = "";
-        if (selectedTool) {
-          toolResult = await (selectedTool as any).invoke(toolCall.args);
-        } else {
-          toolResult = `Error: Tool ${toolCall.name} not found`;
-        }
-        messages.push(new ToolMessage({
-          tool_call_id: toolCall.id!,
-          content: toolResult
-        }));
-      }
-    }
-
-    // 3. Final structured output generation using Zod Schema (fixes regex fragility)
-    messages.push(new SystemMessage("Now, based on the research you conducted, generate the final comprehensive investment analysis report using the exact provided structured schema format."));
-    
-    const structuredLlm = llm.withStructuredOutput(researchSchema, { name: "research_report" });
-    const finalReport = await structuredLlm.invoke(messages);
-
-    return NextResponse.json(finalReport);
-  } catch (error: any) {
-    console.error("Research API Error:", error);
-    return NextResponse.json({ error: error.message || 'Analysis failed' }, { status: 500 });
+    requestData = await request.json();
+  } catch(e) {
+    return NextResponse.json({ error: 'Invalid request' }, { status: 400 });
   }
+
+  const { companyName, apiKey, model } = requestData;
+
+  if (!companyName) {
+    return NextResponse.json({ error: 'Company name is required' }, { status: 400 });
+  }
+  if (!apiKey) {
+    return NextResponse.json({ error: 'Groq API Key is required. Please set it in the Settings tab.' }, { status: 401 });
+  }
+
+  const stream = new ReadableStream({
+    async start(controller) {
+      const sendUpdate = (payload: any) => {
+        controller.enqueue(new TextEncoder().encode(JSON.stringify(payload) + '\n'));
+      };
+
+      try {
+        const llm = new ChatGroq({
+          model: model || 'llama-3.3-70b-versatile',
+          temperature: 0.1, // low temp for analytical accuracy
+          apiKey: apiKey,
+        });
+
+        const llmWithTools = llm.bindTools(tools);
+        
+        let messages: any[] = [
+          new SystemMessage("You are an expert investment analyst. You MUST use your tools to gather real-time financial data, recent news, and perform accurate calculations before making an investment recommendation. CRITICAL: Do not hallucinate metrics. You must extract exact numbers from the get_stock_data tool. When calling tools, ensure your arguments are valid, tightly-formatted JSON without any line breaks or markdown."),
+          new HumanMessage(`Please research and analyze this company: ${companyName}. Use your tools to look up the ticker, fetch stock data, search recent news, and calculate metrics. Every claim must be supported by the data you fetch.`)
+        ];
+
+        sendUpdate({ type: 'flag', step: 'web-search' });
+
+        // Simple Agent Loop (max 5 iterations)
+        for (let i = 0; i < 5; i++) {
+          let aiMsg;
+          try {
+            aiMsg = await llmWithTools.invoke(messages);
+          } catch (e: any) {
+            console.warn("Groq Tool Invocation Error, retrying...", e.message);
+            try {
+               aiMsg = await llmWithTools.invoke(messages);
+            } catch (retryErr: any) {
+               console.error("Tool invocation failed twice. Proceeding to final output.");
+               break;
+            }
+          }
+
+          if (aiMsg) messages.push(aiMsg);
+
+          if (!aiMsg?.tool_calls || aiMsg.tool_calls.length === 0) {
+            break; // LLM has finished gathering info
+          }
+
+          for (const toolCall of aiMsg.tool_calls) {
+            if (toolCall.name === 'get_stock_data' || toolCall.name === 'calculator') {
+              sendUpdate({ type: 'flag', step: 'financial-model' });
+            } else if (toolCall.name === 'web_search') {
+              sendUpdate({ type: 'flag', step: 'sentiment-scan' });
+            }
+
+            const selectedTool = toolsByName[toolCall.name];
+            let toolResult = "";
+            if (selectedTool) {
+              toolResult = await (selectedTool as any).invoke(toolCall.args);
+            } else {
+              toolResult = `Error: Tool ${toolCall.name} not found`;
+            }
+            messages.push(new ToolMessage({
+              tool_call_id: toolCall.id!,
+              content: toolResult
+            }));
+          }
+          sendUpdate({ type: 'flag', step: 'peer-analysis' });
+        }
+
+        // Final structured output generation
+        sendUpdate({ type: 'flag', step: 'final-synthesis' });
+        messages.push(new SystemMessage("Now, based on the research you conducted, generate the final comprehensive investment analysis report using the exact provided structured schema format."));
+        
+        const structuredLlm = llm.withStructuredOutput(researchSchema, { name: "research_report" });
+        const finalReport = await structuredLlm.invoke(messages);
+
+        sendUpdate({ type: 'result', data: finalReport });
+        controller.close();
+      } catch (error: any) {
+        console.error("Research API Error:", error);
+        sendUpdate({ type: 'error', message: error.message || 'Analysis failed' });
+        controller.close();
+      }
+    }
+  });
+
+  return new NextResponse(stream, { 
+    headers: { 
+      'Content-Type': 'application/x-ndjson', 
+      'Cache-Control': 'no-cache, no-transform', 
+      'Connection': 'keep-alive' 
+    } 
+  });
 }

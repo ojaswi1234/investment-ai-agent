@@ -130,6 +130,7 @@ export default function Home() {
   const [companyName, setCompanyName] = useState('');
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<ResearchResult | null>(null);
+  const [activeFlag, setActiveFlag] = useState('web-search');
   const [watchlist, setWatchlist] = useState<string[]>([]);
   const [history, setHistory] = useState<any[]>([]);
   const [activeTab, setActiveTab] = useState<'research' | 'compare' | 'watchlist' | 'history' | 'rag' | 'settings'>('research');
@@ -187,6 +188,7 @@ export default function Home() {
 
     setLoading(true);
     setResult(null);
+    setActiveFlag('web-search');
 
     try {
       const response = await fetch('/api/research', {
@@ -203,24 +205,53 @@ export default function Home() {
         const errorData = await response.json();
         throw new Error(errorData.error || 'Failed to analyze company');
       }
+      
+      if (!response.body) throw new Error('Streaming not supported');
 
-      const data = await response.json();
-      setResult(data);
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
 
-      await fetch('/api/history', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 
-          companyName: data.company, 
-          recommendation: data.recommendation, 
-          confidence: data.confidence 
-        }),
-      });
-      loadHistory();
-      toast.success(`Analysis complete for ${data.company}`);
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n');
+        buffer = lines.pop() || '';
+
+        for (const line of lines) {
+          if (!line.trim()) continue;
+          try {
+            const parsed = JSON.parse(line);
+            if (parsed.type === 'flag') {
+              setActiveFlag(parsed.step);
+            } else if (parsed.type === 'result') {
+              const data = parsed.data;
+              setResult(data);
+              await fetch('/api/history', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ 
+                  companyName: data.company, 
+                  recommendation: data.recommendation, 
+                  confidence: data.confidence 
+                }),
+              });
+              loadHistory();
+              toast.success(`Analysis complete for ${data.company}`);
+            } else if (parsed.type === 'error') {
+              throw new Error(parsed.message);
+            }
+          } catch (e) {
+            // Ignore incomplete JSON chunks
+          }
+        }
+      }
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'An unexpected error occurred');
-      setLoading(false); // Stop loading if error, otherwise timeline finishes and stops it
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -415,7 +446,7 @@ export default function Home() {
           <AnimatePresence mode="wait">
             {loading ? (
               <motion.div key="loader" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="py-12">
-                <TimelineLoader onComplete={() => setLoading(false)} />
+                <TimelineLoader activeFlag={activeFlag} />
               </motion.div>
             ) : result ? (
               <motion.div key="results" initial="hidden" animate="visible" className="space-y-6">

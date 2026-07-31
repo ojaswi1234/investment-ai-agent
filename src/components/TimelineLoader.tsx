@@ -13,30 +13,9 @@ const steps = [
   { id: 'final-synthesis', label: 'Synthesis', description: 'Generating investment thesis and confidence score...', icon: Sparkles, duration: 1800 },
 ];
 
-export default function TimelineLoader({ onComplete }: { onComplete: () => void }) {
-  const [activeStepIndex, setActiveStepIndex] = useState(0);
-
-  useEffect(() => {
-    let timeoutId: NodeJS.Timeout;
-
-    const runStep = (index: number) => {
-      if (index >= steps.length) {
-        onComplete();
-        return;
-      }
-
-      timeoutId = setTimeout(() => {
-        setActiveStepIndex(index + 1);
-        runStep(index + 1);
-      }, steps[index].duration);
-    };
-
-    runStep(0);
-
-    return () => clearTimeout(timeoutId);
-  }, [onComplete]);
-
-  const progress = Math.min((activeStepIndex / steps.length) * 100, 100);
+export default function TimelineLoader({ activeFlag }: { activeFlag: string }) {
+  const activeStepIndex = Math.max(0, steps.findIndex(s => s.id === activeFlag));
+  const progress = Math.min((activeStepIndex / (steps.length - 1)) * 100, 100);
 
   return (
     <div className="w-full max-w-md mx-auto glass-panel p-6 sm:p-8 rounded-2xl relative overflow-hidden">
