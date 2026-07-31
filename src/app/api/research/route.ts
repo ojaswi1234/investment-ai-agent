@@ -1,85 +1,147 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { ChatGroq } from '@langchain/groq';
-import { HumanMessage } from '@langchain/core/messages';
+import { HumanMessage, SystemMessage, ToolMessage, AIMessage } from '@langchain/core/messages';
+import { DynamicStructuredTool } from "@langchain/core/tools";
+import { z } from 'zod';
+import yahooFinance from 'yahoo-finance2';
+import { search } from 'duck-duck-scrape';
 
-// LLM will be instantiated dynamically per request
+// 1. Define the Zod Schema for robust JSON output (No more regex parsing)
+const researchSchema = z.object({
+  company: z.string(),
+  recommendation: z.enum(["INVEST", "PASS"]),
+  confidence: z.number().min(0).max(100),
+  reasoning: z.object({
+    business_overview: z.string(),
+    strengths: z.array(z.string()),
+    weaknesses: z.array(z.string()),
+    financial_analysis: z.string(),
+    market_position: z.string(),
+    growth_potential: z.string(),
+    key_risks: z.array(z.string())
+  }),
+  investment_thesis: z.string(),
+  suggested_time_horizon: z.string(),
+  peer_comparison: z.object({
+    competitors: z.array(z.string()),
+    comparison_metrics: z.record(z.object({
+      company: z.number(),
+      industry_avg: z.number(),
+      interpretation: z.string()
+    })),
+    competitive_position: z.string()
+  }),
+  historical_context: z.object({
+    revenue_trend: z.object({
+      three_year_avg: z.number(),
+      current: z.number(),
+      trend: z.string()
+    }),
+    profit_trend: z.object({
+      three_year_avg: z.number(),
+      current: z.number(),
+      trend: z.string()
+    }),
+    key_changes: z.array(z.string()),
+    pattern_analysis: z.string()
+  }),
+  sources: z.array(z.object({
+    type: z.string(),
+    year: z.string(),
+    reliability: z.string(),
+    source: z.string().optional()
+  })),
+  materiality_assessment: z.object({
+    high_impact_factors: z.array(z.string()),
+    medium_impact_factors: z.array(z.string()),
+    low_impact_factors: z.array(z.string())
+  }),
+  sector_context: z.object({
+    sector_name: z.string(),
+    sector_outlook: z.string(),
+    sector_trends: z.array(z.string()),
+    company_vs_sector: z.string()
+  }),
+  sentiment_analysis: z.object({
+    overall_sentiment: z.string(),
+    sentiment_trend: z.string(),
+    key_sentiment_drivers: z.array(z.string()),
+    news_sentiment_summary: z.string()
+  }),
+  risk_matrix: z.object({
+    high_likelihood_high_impact: z.array(z.string()),
+    high_likelihood_low_impact: z.array(z.string()),
+    low_likelihood_high_impact: z.array(z.string()),
+    low_likelihood_low_impact: z.array(z.string()),
+    mitigation_strategies: z.array(z.string())
+  }),
+  financial_health_score: z.object({
+    overall_score: z.number().min(0).max(100),
+    score_category: z.string(),
+    component_scores: z.object({
+      profitability: z.number(),
+      solvency: z.number(),
+      efficiency: z.number(),
+      growth: z.number()
+    }),
+    trend: z.string()
+  })
+});
 
-const researchPrompt = `You are an investment analyst. Analyze this company and give a comprehensive investment recommendation.
+// 2. Define Tools to eliminate hallucination
+const getStockData = new DynamicStructuredTool({
+  name: "get_stock_data",
+  description: "Get real-time stock data, price, and financial metrics from Yahoo Finance for a given ticker symbol.",
+  schema: z.object({
+    ticker: z.string().describe("The stock ticker symbol (e.g., AAPL, MSFT)"),
+  }),
+  func: async ({ ticker }) => {
+    try {
+      const quote = await yahooFinance.quote(ticker);
+      const metrics = await yahooFinance.quoteSummary(ticker, { modules: ["financialData", "defaultKeyStatistics"] });
+      return JSON.stringify({ quote, metrics });
+    } catch (e: any) {
+      return `Failed to fetch stock data: ${e.message}`;
+    }
+  },
+});
 
-Format your response as JSON:
-{
-  "company": "Company Name",
-  "recommendation": "INVEST" or "PASS",
-  "confidence": number (0-100),
-  "reasoning": {
-    "business_overview": "What the company does",
-    "strengths": ["strength1", "strength2"],
-    "weaknesses": ["weakness1", "weakness2"],
-    "financial_analysis": "Financial health summary",
-    "market_position": "Competitive position",
-    "growth_potential": "Growth prospects",
-    "key_risks": ["risk1", "risk2"]
+const webSearch = new DynamicStructuredTool({
+  name: "web_search",
+  description: "Search the web for recent news, sector trends, or general information about a company.",
+  schema: z.object({
+    query: z.string().describe("The search query"),
+  }),
+  func: async ({ query }) => {
+    try {
+      const results = await search(query);
+      // Return top 3 results
+      return JSON.stringify(results.results.slice(0, 3).map(r => ({ title: r.title, description: r.description, url: r.url })));
+    } catch (e: any) {
+      return `Search failed: ${e.message}`;
+    }
   },
-  "investment_thesis": "Why this recommendation",
-  "suggested_time_horizon": "Short-term (0-1 year) | Medium-term (1-3 years) | Long-term (3+ years)",
-  "peer_comparison": {
-    "competitors": ["Competitor1", "Competitor2", "Competitor3"],
-    "comparison_metrics": {
-      "P/E_ratio": {"company": number, "industry_avg": number, "interpretation": "string"},
-      "revenue_growth": {"company": number, "industry_avg": number, "interpretation": "string"},
-      "profit_margin": {"company": number, "industry_avg": number, "interpretation": "string"},
-      "debt_to_equity": {"company": number, "industry_avg": number, "interpretation": "string"}
-    },
-    "competitive_position": "Summary of competitive standing"
-  },
-  "historical_context": {
-    "revenue_trend": {"three_year_avg": number, "current": number, "trend": "improving/stable/declining"},
-    "profit_trend": {"three_year_avg": number, "current": number, "trend": "improving/stable/declining"},
-    "key_changes": ["Significant change1", "Significant change2"],
-    "pattern_analysis": "Analysis of historical patterns"
-  },
-  "sources": [
-    {"type": "Annual Report", "year": "2024", "reliability": "high"},
-    {"type": "Market Data", "source": "general market knowledge", "reliability": "medium"}
-  ],
-  "materiality_assessment": {
-    "high_impact_factors": ["factor1", "factor2"],
-    "medium_impact_factors": ["factor1", "factor2"],
-    "low_impact_factors": ["factor1", "factor2"]
-  },
-  "sector_context": {
-    "sector_name": "Technology",
-    "sector_outlook": "positive/neutral/negative",
-    "sector_trends": ["trend1", "trend2"],
-    "company_vs_sector": "How company compares to sector"
-  },
-  "sentiment_analysis": {
-    "overall_sentiment": "positive/neutral/negative",
-    "sentiment_trend": "improving/stable/declining",
-    "key_sentiment_drivers": ["driver1", "driver2"],
-    "news_sentiment_summary": "Summary of recent news sentiment"
-  },
-  "risk_matrix": {
-    "high_likelihood_high_impact": ["risk1"],
-    "high_likelihood_low_impact": ["risk1"],
-    "low_likelihood_high_impact": ["risk1"],
-    "low_likelihood_low_impact": ["risk1"],
-    "mitigation_strategies": ["strategy1", "strategy2"]
-  },
-  "financial_health_score": {
-    "overall_score": number (0-100),
-    "score_category": "excellent/good/fair/poor",
-    "component_scores": {
-      "profitability": number,
-      "solvency": number,
-      "efficiency": number,
-      "growth": number
-    },
-    "trend": "improving/stable/declining"
-  }
-}
+});
 
-Analyze the company based on your knowledge. Include realistic estimates for metrics based on general knowledge. Be objective and specific.`;
+const calculator = new DynamicStructuredTool({
+  name: "calculator",
+  description: "Evaluate a mathematical expression. Useful for calculating P/E ratios, averages, or growth rates.",
+  schema: z.object({
+    expression: z.string().describe("The mathematical expression to evaluate (e.g., '100 / 12')"),
+  }),
+  func: async ({ expression }) => {
+    try {
+      // Safe eval
+      const result = new Function(`return ${expression}`)();
+      return result.toString();
+    } catch (e) {
+      return "Calculation failed.";
+    }
+  },
+});
+
+const tools = [getStockData, webSearch, calculator];
+const toolsByName = Object.fromEntries(tools.map((t) => [t.name, t]));
 
 export async function POST(request: NextRequest) {
   try {
@@ -94,23 +156,50 @@ export async function POST(request: NextRequest) {
 
     const llm = new ChatGroq({
       model: model || 'llama-3.3-70b-versatile',
-      temperature: 0.7,
+      temperature: 0.1, // low temp for analytical accuracy
       apiKey: apiKey,
     });
 
-    const prompt = `${researchPrompt}\n\nAnalyze this company: ${companyName}`;
-    const response = await llm.invoke([new HumanMessage(prompt)]);
+    const llmWithTools = llm.bindTools(tools);
     
-    const content = response.content as string;
-    const jsonMatch = content.match(/\{[\s\S]*\}/);
-    
-    if (!jsonMatch) {
-      return NextResponse.json({ error: 'Invalid response format' }, { status: 500 });
+    let messages: any[] = [
+      new SystemMessage("You are an expert investment analyst. You MUST use your tools to gather real-time financial data, recent news, and perform accurate calculations before making an investment recommendation. Do not hallucinate metrics."),
+      new HumanMessage(`Please research and analyze this company: ${companyName}. Use your tools to look up the ticker, fetch stock data, search recent news, and calculate metrics.`)
+    ];
+
+    // Simple Agent Loop (max 5 iterations)
+    for (let i = 0; i < 5; i++) {
+      const aiMsg = await llmWithTools.invoke(messages);
+      messages.push(aiMsg);
+
+      if (!aiMsg.tool_calls || aiMsg.tool_calls.length === 0) {
+        break; // LLM has finished gathering info
+      }
+
+      for (const toolCall of aiMsg.tool_calls) {
+        const selectedTool = toolsByName[toolCall.name];
+        let toolResult = "";
+        if (selectedTool) {
+          toolResult = await selectedTool.invoke(toolCall.args);
+        } else {
+          toolResult = `Error: Tool ${toolCall.name} not found`;
+        }
+        messages.push(new ToolMessage({
+          tool_call_id: toolCall.id!,
+          content: toolResult
+        }));
+      }
     }
 
-    const parsedResponse = JSON.parse(jsonMatch[0]);
-    return NextResponse.json(parsedResponse);
-  } catch (error) {
-    return NextResponse.json({ error: 'Analysis failed' }, { status: 500 });
+    // 3. Final structured output generation using Zod Schema (fixes regex fragility)
+    messages.push(new SystemMessage("Now, based on the research you conducted, generate the final comprehensive investment analysis report using the exact provided structured schema format."));
+    
+    const structuredLlm = llm.withStructuredOutput(researchSchema, { name: "research_report" });
+    const finalReport = await structuredLlm.invoke(messages);
+
+    return NextResponse.json(finalReport);
+  } catch (error: any) {
+    console.error("Research API Error:", error);
+    return NextResponse.json({ error: error.message || 'Analysis failed' }, { status: 500 });
   }
 }
