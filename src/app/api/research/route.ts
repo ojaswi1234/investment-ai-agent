@@ -30,9 +30,9 @@ const researchSchema = z.object({
   peer_comparison: z.object({
     competitors: z.array(z.string()),
     comparison_metrics: z.record(z.string(), z.object({
-      company: z.number(),
-      industry_avg: z.number(),
-      interpretation: z.string()
+      company: z.number().nullable().optional(),
+      industry_avg: z.number().nullable().optional(),
+      interpretation: z.string().optional()
     })),
     competitive_position: z.string()
   }),
