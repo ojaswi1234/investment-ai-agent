@@ -6,6 +6,7 @@ import { z } from 'zod';
 import yahooFinance from 'yahoo-finance2';
 import { search } from 'duck-duck-scrape';
 import { evaluate } from 'mathjs';
+import { checkRateLimit, responseCache } from '@/lib/cache';
 
 // 1. Define the Zod Schema for robust JSON output
 const compareSchema = z.object({
@@ -143,6 +144,18 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Groq API Key is required. Please set it in the Settings tab.' }, { status: 401 });
     }
 
+    // Rate Limiting
+    const ip = request.headers.get('x-forwarded-for') ?? 'unknown';
+    if (ip !== 'unknown' && !checkRateLimit(ip)) {
+      return NextResponse.json({ error: 'Rate limit exceeded (Max 10 requests per hour).' }, { status: 429 });
+    }
+
+    const cacheKey = `compare-${companies.slice().sort().join('-').toLowerCase()}`;
+    const cachedResponse = responseCache.get(cacheKey);
+    if (cachedResponse) {
+      return NextResponse.json(JSON.parse(cachedResponse));
+    }
+
     const llm = new ChatGroq({
       model: model || 'llama-3.3-70b-versatile',
       temperature: 0.1,
@@ -197,6 +210,8 @@ export async function POST(request: NextRequest) {
     
     const structuredLlm = llm.withStructuredOutput(compareSchema, { name: "comparison_report" });
     const finalReport = await structuredLlm.invoke(messages);
+    
+    responseCache.set(cacheKey, JSON.stringify(finalReport));
 
     return NextResponse.json(finalReport);
   } catch (error: any) {

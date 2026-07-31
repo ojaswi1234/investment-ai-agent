@@ -17,6 +17,7 @@
     "duck-duck-scrape": "^2.2.7",
     "framer-motion": "^12.42.2",
     "langchain": "^1.5.3",
+    "lru-cache": "^11.5.2",
     "lucide-react": "^1.24.0",
     "mathjs": "^15.2.0",
     "next": "16.2.10",

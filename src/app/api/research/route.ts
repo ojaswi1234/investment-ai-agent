@@ -6,6 +6,7 @@ import { z } from 'zod';
 import yahooFinance from 'yahoo-finance2';
 import { search } from 'duck-duck-scrape';
 import { evaluate } from 'mathjs';
+import { checkRateLimit, responseCache } from '@/lib/cache';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
@@ -212,6 +213,15 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Groq API Key is required. Please set it in the Settings tab.' }, { status: 401 });
   }
 
+  // Rate Limiting
+  const ip = request.headers.get('x-forwarded-for') ?? 'unknown';
+  if (ip !== 'unknown' && !checkRateLimit(ip)) {
+    return NextResponse.json({ error: 'Rate limit exceeded (Max 10 requests per hour).' }, { status: 429 });
+  }
+
+  const cacheKey = `research-${companyName.toLowerCase()}`;
+  const cachedResponse = responseCache.get(cacheKey);
+
   const stream = new ReadableStream({
     async start(controller) {
       const sendUpdate = (payload: any) => {
@@ -220,6 +230,18 @@ export async function POST(request: NextRequest) {
 
       // Pad the stream with 4KB of spaces to force Next.js/Vercel to flush the buffer immediately
       controller.enqueue(new TextEncoder().encode(' '.repeat(4096) + '\n'));
+
+      // If cached, fast-forward the loader and return instantly
+      if (cachedResponse) {
+        sendUpdate({ type: 'flag', step: 'web-search' });
+        sendUpdate({ type: 'flag', step: 'financial-model' });
+        sendUpdate({ type: 'flag', step: 'peer-analysis' });
+        sendUpdate({ type: 'flag', step: 'sentiment-scan' });
+        sendUpdate({ type: 'flag', step: 'risk-matrix' });
+        sendUpdate({ type: 'result', data: JSON.parse(cachedResponse) });
+        controller.close();
+        return;
+      }
 
       try {
         const llm = new ChatGroq({
@@ -280,12 +302,13 @@ export async function POST(request: NextRequest) {
         
         const structuredLlm = llm.withStructuredOutput(researchSchema, { name: "research_report" });
         const finalReport = await structuredLlm.invoke(messages);
-
+        
+        responseCache.set(cacheKey, JSON.stringify(finalReport));
         sendUpdate({ type: 'result', data: finalReport });
-        controller.close();
-      } catch (error: any) {
-        console.error("Research API Error:", error);
-        sendUpdate({ type: 'error', message: error.message || 'Analysis failed' });
+      } catch (e: any) {
+        console.error("Research Error:", e);
+        sendUpdate({ type: 'error', message: e.message || 'An error occurred during research' });
+      } finally {
         controller.close();
       }
     }
