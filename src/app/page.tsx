@@ -343,9 +343,16 @@ export default function Home() {
   const copyShareLink = () => {
     if (!result) return;
     const url = new URL(window.location.href);
-    url.searchParams.set('q', result.company);
-    navigator.clipboard.writeText(url.toString());
-    toast.success('Link copied to clipboard!');
+    url.search = ''; // Clear search params
+    try {
+      const dataString = JSON.stringify(result);
+      const encoded = btoa(unescape(encodeURIComponent(dataString)));
+      url.hash = `shared=${encoded}`;
+      navigator.clipboard.writeText(url.toString());
+      toast.success('Link copied to clipboard!');
+    } catch (e) {
+      toast.error('Failed to generate share link');
+    }
   };
 
   const exportToPDF = () => {
@@ -355,6 +362,27 @@ export default function Home() {
   useEffect(() => {
     loadWatchlist();
     loadHistory();
+    
+    // 1. Check for shared data in URL hash
+    const hash = window.location.hash;
+    if (hash && hash.startsWith('#shared=')) {
+      try {
+        const encoded = hash.replace('#shared=', '');
+        const decoded = decodeURIComponent(escape(atob(encoded)));
+        const data = JSON.parse(decoded);
+        setCompanyName(data.company);
+        setResult(data);
+        toast.success(`Loaded shared analysis for ${data.company}`);
+        // Clean URL
+        window.history.replaceState(null, '', window.location.pathname);
+        return; // Skip normal fetch
+      } catch (e) {
+        toast.error('Shared link is corrupted or invalid.');
+        window.history.replaceState(null, '', window.location.pathname);
+      }
+    }
+
+    // 2. Otherwise handle legacy ?q= parameter
     const params = new URLSearchParams(window.location.search);
     const q = params.get('q');
     if (q) {
