@@ -101,10 +101,12 @@ export async function POST(request: NextRequest) {
       
       // Extract embeddings for the entire batch at once
       const batchOutput = await extract(batch, { pooling: 'mean', normalize: true });
-      const batchEmbeddings = batchOutput.tolist(); // Converts Tensor to 2D array [batch_size, embed_dim]
+      const flatData = batchOutput.data; // Flat Float32Array
+      const embedDim = batchOutput.dims[1]; // [batch_size, embed_dim]
 
       for (let j = 0; j < batch.length; j++) {
-        const score = cosineSimilarity(queryEmbedding as number[], batchEmbeddings[j]);
+        const chunkEmbedding = Array.from(flatData.subarray(j * embedDim, (j + 1) * embedDim));
+        const score = cosineSimilarity(queryEmbedding as number[], chunkEmbedding as number[]);
         scoredChunks.push({ text: batch[j], score });
       }
     }
