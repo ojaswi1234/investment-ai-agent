@@ -89,3 +89,39 @@ body {
     scroll-behavior: auto !important;
   }
 }
+
+/* Force dark mode background and colors when exporting to PDF (window.print) */
+@media print {
+  @page {
+    margin: 12mm;
+  }
+
+  body, html {
+    background-color: #0a0a0f !important;
+    color: #f8fafc !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  * {
+    /* Chrome PDF engine renders CSS blur/shadows as solid grey blocks. Strip them. */
+    box-shadow: none !important;
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+    text-shadow: none !important;
+  }
+  
+  .glass-panel {
+    background-color: #161622 !important;
+    border: 1px solid #333 !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+    page-break-inside: avoid !important;
+    break-inside: avoid !important;
+    margin-bottom: 20px !important;
+  }
+
+  .animated-bg {
+    display: none !important;
+  }
+}

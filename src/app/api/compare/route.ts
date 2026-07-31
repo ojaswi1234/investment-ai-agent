@@ -5,6 +5,7 @@ import { DynamicStructuredTool } from "@langchain/core/tools";
 import { z } from 'zod';
 import yahooFinance from 'yahoo-finance2';
 import { search } from 'duck-duck-scrape';
+import { evaluate } from 'mathjs';
 
 // 1. Define the Zod Schema for robust JSON output
 const compareSchema = z.object({
@@ -89,7 +90,7 @@ const calculator = new DynamicStructuredTool({
   }),
   func: async ({ expression }) => {
     try {
-      const result = new Function(`return ${expression}`)();
+      const result = evaluate(expression);
       return result.toString();
     } catch (e) {
       return "Calculation failed.";

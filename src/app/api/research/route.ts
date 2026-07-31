@@ -5,6 +5,7 @@ import { DynamicStructuredTool } from "@langchain/core/tools";
 import { z } from 'zod';
 import yahooFinance from 'yahoo-finance2';
 import { search } from 'duck-duck-scrape';
+import { evaluate } from 'mathjs';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
@@ -152,7 +153,7 @@ const calculator = new DynamicStructuredTool({
   }),
   func: async ({ expression }) => {
     try {
-      const result = new Function(`return ${expression}`)();
+      const result = evaluate(expression);
       return result.toString();
     } catch (e) {
       return "Calculation failed.";

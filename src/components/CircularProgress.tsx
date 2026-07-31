@@ -41,7 +41,7 @@ export default function CircularProgress({ value, size = 120, strokeWidth = 8 }:
           style={{ filter: `drop-shadow(0 0 8px ${glowColor})` }}
         />
       </svg>
-      <div className="absolute flex flex-col items-center justify-center text-center">
+      <div className="absolute inset-0 flex flex-col items-center justify-center text-center pointer-events-none">
         <span className="text-2xl font-bold font-financial tracking-tighter">{value}%</span>
       </div>
     </div>
