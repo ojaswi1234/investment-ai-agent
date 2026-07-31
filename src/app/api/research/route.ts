@@ -137,6 +137,7 @@ const getStockData = new DynamicStructuredTool({
         currency: quote.currency,
         marketCap: quote.marketCap,
         peRatio: quote.trailingPE || quote.forwardPE,
+        priceToBook: quote.priceToBook,
         eps: quote.epsTrailingTwelveMonths,
         profitMargin: metrics.financialData?.profitMargins,
         operatingMargin: metrics.financialData?.operatingMargins,
@@ -145,7 +146,11 @@ const getStockData = new DynamicStructuredTool({
         revenueGrowth: metrics.financialData?.revenueGrowth,
         freeCashflow: metrics.financialData?.freeCashflow,
         debtToEquity: metrics.financialData?.debtToEquity,
+        totalDebt: metrics.financialData?.totalDebt,
         currentRatio: metrics.financialData?.currentRatio,
+        shortRatio: metrics.defaultKeyStatistics?.shortRatio,
+        analystTargetPrice: metrics.financialData?.targetMeanPrice,
+        analystRating: metrics.financialData?.recommendationKey,
         fiftyTwoWeekHigh: quote.fiftyTwoWeekHigh,
         fiftyTwoWeekLow: quote.fiftyTwoWeekLow,
         historical_price_growth: {
@@ -253,8 +258,8 @@ export async function POST(request: NextRequest) {
         const llmWithTools = llm.bindTools(tools);
         
         let messages: any[] = [
-          new SystemMessage("You are an expert investment analyst. You MUST use your tools to gather real-time financial data, recent news, and perform accurate calculations before making an investment recommendation. CRITICAL: Do not hallucinate metrics. You must extract exact numbers from the get_stock_data tool. When calling tools, ensure your arguments are valid, tightly-formatted JSON without any line breaks or markdown."),
-          new HumanMessage(`Please research and analyze this company: ${companyName}. Use your tools to look up the ticker, fetch stock data, search recent news, and calculate metrics. CRUCIAL: You MUST use web_search to identify 2-3 top competitors, and then use get_stock_data on those competitors' tickers to perform a robust, data-backed peer comparison. Every claim and comparison must be supported by the data you fetch.`)
+          new SystemMessage("You are an elite, highly skeptical, and ruthless Wall Street value investment analyst. You do NOT hand out 'INVEST' ratings easily; you default to 'PASS' unless the fundamentals are absolutely exceptional. You are actively hunting for flaws, overvaluations, debt issues, declining margins, macro risks, and competitive threats. You MUST use your tools to gather real-time financial data, recent news, and perform accurate calculations. CRITICAL: Do not hallucinate metrics. You must extract exact numbers from the get_stock_data tool. If a company has poor fundamentals, high P/E ratios, or fierce competition, you MUST rate them 'PASS'. When calling tools, ensure your arguments are valid JSON."),
+          new HumanMessage(`Please ruthlessly research and stress-test this company: ${companyName}. Use your tools to look up the ticker, fetch stock data, search recent news, and calculate metrics. CRUCIAL: You MUST use web_search to identify 2-3 top competitors, and then use get_stock_data on those competitors' tickers to perform a robust, data-backed peer comparison. I want you to actively look for reasons to NOT invest. Every claim and comparison must be supported by the data you fetch.`)
         ];
 
         const uiSteps = ['web-search', 'financial-model', 'peer-analysis', 'sentiment-scan', 'risk-matrix', 'risk-matrix', 'risk-matrix', 'risk-matrix'];
@@ -298,7 +303,7 @@ export async function POST(request: NextRequest) {
 
         // Final structured output generation
         sendUpdate({ type: 'flag', step: 'final-synthesis' });
-        messages.push(new SystemMessage("Now, based on the research you conducted, generate the final comprehensive investment analysis report using the exact provided structured schema format."));
+        messages.push(new SystemMessage("Now, based on the rigorous research you conducted, generate the final comprehensive investment analysis report using the exact provided structured schema format. BE STRICT AND RUTHLESS. Do not sugarcoat. If the valuation is stretched, margins are shrinking, or risks outweigh rewards, you MUST set the recommendation to 'PASS' and assign a low financial health score. Highlight their critical weaknesses and existential threats prominently in the risk matrix and weaknesses array."));
         
         const structuredLlm = llm.withStructuredOutput(researchSchema, { name: "research_report" });
         const finalReport = await structuredLlm.invoke(messages);
