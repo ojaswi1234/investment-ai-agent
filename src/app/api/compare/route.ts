@@ -213,6 +213,7 @@ export async function POST(request: NextRequest) {
     
     responseCache.set(cacheKey, JSON.stringify(finalReport));
 
+    if (typeof global.gc === 'function') global.gc();
     return NextResponse.json(finalReport);
   } catch (error: any) {
     console.error("Comparison API Error:", error);

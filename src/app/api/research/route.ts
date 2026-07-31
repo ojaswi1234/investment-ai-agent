@@ -309,6 +309,7 @@ export async function POST(request: NextRequest) {
         console.error("Research Error:", e);
         sendUpdate({ type: 'error', message: e.message || 'An error occurred during research' });
       } finally {
+        if (typeof global.gc === 'function') global.gc();
         controller.close();
       }
     }

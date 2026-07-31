@@ -20,3 +20,8 @@ export function checkRateLimit(ip: string): boolean {
   rateLimitCache.set(ip, currentUsage + 1);
   return true; // Allowed
 }
+
+export function clearCache() {
+  responseCache.clear();
+  rateLimitCache.clear();
+}

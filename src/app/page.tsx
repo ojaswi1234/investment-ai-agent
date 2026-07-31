@@ -956,6 +956,32 @@ export default function Home() {
                 We take security seriously. Your API key remains entirely on your device and is only transmitted directly to the backend temporarily during analysis via HTTPS. It is never logged or persisted on the server.
               </p>
             </div>
+
+            <div className="border-t border-white/10 pt-8 mt-8 space-y-4">
+              <div>
+                <h3 className="text-xl font-bold text-slate-200 mb-2 flex items-center gap-2"><Cpu size={20}/> Memory & Cache Management</h3>
+                <p className="text-sm text-slate-400">If your server is running out of memory (e.g., Render Free Tier OOM limits), you can forcefully purge the cached analyses and trigger a garbage collection cycle.</p>
+              </div>
+              <button
+                onClick={async () => {
+                  try {
+                    const res = await fetch('/api/cache', { method: 'DELETE' });
+                    const data = await res.json();
+                    if(data.success) {
+                      toast.success(data.message);
+                    } else {
+                      throw new Error('Failed to clear cache');
+                    }
+                  } catch (e: any) {
+                    toast.error(e.message || "Failed to clear memory");
+                  }
+                }}
+                className="px-6 py-3 bg-white/5 hover:bg-red-500/20 border border-red-500/20 text-red-400 rounded-xl text-sm font-medium transition-all flex items-center justify-center gap-2"
+              >
+                <AlertTriangle size={16} />
+                Clear Server Memory & Caches
+              </button>
+            </div>
           </motion.div>
         )}
       </main>

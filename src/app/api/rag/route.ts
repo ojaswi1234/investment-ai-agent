@@ -117,6 +117,17 @@ export async function POST(request: NextRequest) {
     const topChunks = scoredChunks.slice(0, 3).map(c => c.text);
     const context = topChunks.join('\n\n---\n\n');
 
+    // Aggressively free memory before invoking the LLM
+    if (extractor && typeof extractor.dispose === 'function') {
+      try {
+        await extractor.dispose();
+      } catch (e) {}
+      extractor = null;
+    }
+    if (typeof global.gc === 'function') {
+      global.gc();
+    }
+
     // 5. Generate Response via LLM
     const llm = new ChatGroq({
       model: modelName || 'llama-3.3-70b-versatile',
