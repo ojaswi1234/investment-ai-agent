@@ -229,16 +229,20 @@ export default function Home() {
             } else if (parsed.type === 'result') {
               const data = parsed.data;
               setResult(data);
-              await fetch('/api/history', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ 
-                  companyName: data.company, 
-                  recommendation: data.recommendation, 
-                  confidence: data.confidence 
-                }),
+              
+              const historyItem = {
+                id: Date.now().toString(),
+                companyName: data.company,
+                timestamp: new Date().toISOString(),
+                recommendation: data.recommendation || 'N/A',
+                confidence: data.confidence || 0
+              };
+              setHistory(prev => {
+                const newHistory = [...prev, historyItem].slice(-20);
+                localStorage.setItem('history', JSON.stringify(newHistory));
+                return newHistory;
               });
-              loadHistory();
+              
               toast.success(`Analysis complete for ${data.company}`);
             } else if (parsed.type === 'error') {
               throw new Error(parsed.message);
@@ -260,47 +264,50 @@ export default function Home() {
     fetchAnalysis(query);
   };
 
-  const loadWatchlist = async () => {
+  const loadWatchlist = () => {
     try {
-      const response = await fetch('/api/watchlist');
-      const data = await response.json();
-      setWatchlist(data.companies || []);
+      const stored = localStorage.getItem('watchlist');
+      if (stored) {
+        setWatchlist(JSON.parse(stored));
+      } else {
+        setWatchlist([]);
+      }
     } catch (err) {}
   };
 
-  const addToWatchlist = async (company: string) => {
+  const addToWatchlist = (company: string) => {
     try {
-      await fetch('/api/watchlist', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ companyName: company }),
-      });
-      toast.success(`${company} added to Watchlist`);
-      loadWatchlist();
+      const current = [...watchlist];
+      if (!current.includes(company)) {
+        current.push(company);
+        localStorage.setItem('watchlist', JSON.stringify(current));
+        setWatchlist(current);
+        toast.success(`${company} added to Watchlist`);
+      }
     } catch (err) {
       toast.error('Failed to add to watchlist');
     }
   };
 
-  const removeFromWatchlist = async (company: string) => {
+  const removeFromWatchlist = (company: string) => {
     try {
-      await fetch('/api/watchlist', {
-        method: 'DELETE',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ companyName: company }),
-      });
+      const current = watchlist.filter(c => c !== company);
+      localStorage.setItem('watchlist', JSON.stringify(current));
+      setWatchlist(current);
       toast.success(`${company} removed from Watchlist`);
-      loadWatchlist();
     } catch (err) {
       toast.error('Failed to remove from watchlist');
     }
   };
 
-  const loadHistory = async () => {
+  const loadHistory = () => {
     try {
-      const response = await fetch('/api/history');
-      const data = await response.json();
-      setHistory(data.history || []);
+      const stored = localStorage.getItem('history');
+      if (stored) {
+        setHistory(JSON.parse(stored));
+      } else {
+        setHistory([]);
+      }
     } catch (err) {}
   };
 
@@ -521,18 +528,18 @@ export default function Home() {
                     <div>
                       <h3 className="flex items-center gap-2 text-emerald-400 font-semibold mb-3"><TrendingUp size={18}/> Strengths</h3>
                       <ul className="space-y-2">
-                        {result.reasoning.strengths.map((s, i) => (
+                        {result.reasoning.strengths && result.reasoning.strengths.length > 0 && result.reasoning.strengths[0] !== "" ? result.reasoning.strengths.map((s, i) => (
                           <li key={i} className="flex items-start gap-2 text-sm text-slate-300"><CheckCircle2 size={16} className="text-emerald-500/50 shrink-0 mt-0.5"/> {s}</li>
-                        ))}
+                        )) : <li className="text-sm text-slate-500 italic">No major strengths identified</li>}
                       </ul>
                     </div>
                     <div className="w-full h-px bg-white/10" />
                     <div>
                       <h3 className="flex items-center gap-2 text-red-400 font-semibold mb-3"><TrendingDown size={18}/> Weaknesses</h3>
                       <ul className="space-y-2">
-                        {result.reasoning.weaknesses.map((w, i) => (
+                        {result.reasoning.weaknesses && result.reasoning.weaknesses.length > 0 && result.reasoning.weaknesses[0] !== "" ? result.reasoning.weaknesses.map((w, i) => (
                           <li key={i} className="flex items-start gap-2 text-sm text-slate-300"><XCircle size={16} className="text-red-500/50 shrink-0 mt-0.5"/> {w}</li>
-                        ))}
+                        )) : <li className="text-sm text-slate-500 italic">No major weaknesses identified</li>}
                       </ul>
                     </div>
                   </motion.div>
@@ -575,25 +582,25 @@ export default function Home() {
                         <div className="bg-red-500/10 border border-red-500/20 p-4 rounded-xl">
                           <div className="text-xs font-bold text-red-400 uppercase tracking-wide mb-2">High Likelihood / High Impact</div>
                           <ul className="space-y-1">
-                            {result.risk_matrix.high_likelihood_high_impact.map((r, i) => <li key={i} className="text-sm text-red-200/80 leading-snug">• {r}</li>)}
+                            {result.risk_matrix.high_likelihood_high_impact && result.risk_matrix.high_likelihood_high_impact.length > 0 && result.risk_matrix.high_likelihood_high_impact[0] !== "" ? result.risk_matrix.high_likelihood_high_impact.map((r, i) => <li key={i} className="text-sm text-red-200/80 leading-snug">• {r}</li>) : <li className="text-sm text-red-200/50 italic">None identified</li>}
                           </ul>
                         </div>
                         <div className="bg-amber-500/10 border border-amber-500/20 p-4 rounded-xl">
                           <div className="text-xs font-bold text-amber-400 uppercase tracking-wide mb-2">High Likelihood / Low Impact</div>
                           <ul className="space-y-1">
-                            {result.risk_matrix.high_likelihood_low_impact.map((r, i) => <li key={i} className="text-sm text-amber-200/80 leading-snug">• {r}</li>)}
+                            {result.risk_matrix.high_likelihood_low_impact && result.risk_matrix.high_likelihood_low_impact.length > 0 && result.risk_matrix.high_likelihood_low_impact[0] !== "" ? result.risk_matrix.high_likelihood_low_impact.map((r, i) => <li key={i} className="text-sm text-amber-200/80 leading-snug">• {r}</li>) : <li className="text-sm text-amber-200/50 italic">None identified</li>}
                           </ul>
                         </div>
                         <div className="bg-orange-500/10 border border-orange-500/20 p-4 rounded-xl">
                           <div className="text-xs font-bold text-orange-400 uppercase tracking-wide mb-2">Low Likelihood / High Impact</div>
                           <ul className="space-y-1">
-                            {result.risk_matrix.low_likelihood_high_impact.map((r, i) => <li key={i} className="text-sm text-orange-200/80 leading-snug">• {r}</li>)}
+                            {result.risk_matrix.low_likelihood_high_impact && result.risk_matrix.low_likelihood_high_impact.length > 0 && result.risk_matrix.low_likelihood_high_impact[0] !== "" ? result.risk_matrix.low_likelihood_high_impact.map((r, i) => <li key={i} className="text-sm text-orange-200/80 leading-snug">• {r}</li>) : <li className="text-sm text-orange-200/50 italic">None identified</li>}
                           </ul>
                         </div>
                         <div className="bg-emerald-500/10 border border-emerald-500/20 p-4 rounded-xl">
                           <div className="text-xs font-bold text-emerald-400 uppercase tracking-wide mb-2">Low Likelihood / Low Impact</div>
                           <ul className="space-y-1">
-                            {result.risk_matrix.low_likelihood_low_impact.map((r, i) => <li key={i} className="text-sm text-emerald-200/80 leading-snug">• {r}</li>)}
+                            {result.risk_matrix.low_likelihood_low_impact && result.risk_matrix.low_likelihood_low_impact.length > 0 && result.risk_matrix.low_likelihood_low_impact[0] !== "" ? result.risk_matrix.low_likelihood_low_impact.map((r, i) => <li key={i} className="text-sm text-emerald-200/80 leading-snug">• {r}</li>) : <li className="text-sm text-emerald-200/50 italic">None identified</li>}
                           </ul>
                         </div>
                       </div>
@@ -602,7 +609,7 @@ export default function Home() {
                         <div className="mt-4 bg-indigo-500/10 border border-indigo-500/20 p-4 rounded-xl">
                           <div className="text-xs font-bold text-indigo-400 uppercase tracking-wide mb-2">Suggested Mitigation Strategies</div>
                           <ul className="space-y-1">
-                            {result.risk_matrix.mitigation_strategies.map((r, i) => <li key={i} className="text-sm text-indigo-200/80 leading-snug">• {r}</li>)}
+                            {result.risk_matrix.mitigation_strategies && result.risk_matrix.mitigation_strategies.length > 0 && result.risk_matrix.mitigation_strategies[0] !== "" ? result.risk_matrix.mitigation_strategies.map((r, i) => <li key={i} className="text-sm text-indigo-200/80 leading-snug">• {r}</li>) : <li className="text-sm text-indigo-200/50 italic">None suggested</li>}
                           </ul>
                         </div>
                       )}
@@ -959,8 +966,8 @@ export default function Home() {
 
             <div className="border-t border-white/10 pt-8 mt-8 space-y-4">
               <div>
-                <h3 className="text-xl font-bold text-slate-200 mb-2 flex items-center gap-2"><Cpu size={20}/> Memory & Cache Management</h3>
-                <p className="text-sm text-slate-400">If your server is running out of memory (e.g., Render Free Tier OOM limits), you can forcefully purge the cached analyses and trigger a garbage collection cycle.</p>
+                <h3 className="text-xl font-bold text-slate-200 mb-2 flex items-center gap-2"><Cpu size={20}/> Memory & Data Management</h3>
+                <p className="text-sm text-slate-400">Clear saved analysis data and free up system resources. Use this if the application feels sluggish or if you want to securely wipe your temporary session data.</p>
               </div>
               <button
                 onClick={async () => {

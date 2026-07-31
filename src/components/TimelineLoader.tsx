@@ -11,6 +11,7 @@ const steps = [
   { id: 'sentiment-scan', label: 'Sentiment Analysis', description: 'Processing news sentiment and social signals...', icon: MessageCircle, duration: 1000 },
   { id: 'risk-matrix', label: 'Risk Assessment', description: 'Building probability-impact risk matrix...', icon: ShieldAlert, duration: 1500 },
   { id: 'final-synthesis', label: 'Synthesis', description: 'Generating investment thesis and confidence score...', icon: Sparkles, duration: 1800 },
+  { id: 'complete', label: 'Finalizing', description: 'Preparing dashboard...', icon: Check, duration: 500 },
 ];
 
 export default function TimelineLoader({ activeFlag }: { activeFlag: string }) {
