@@ -10,7 +10,7 @@ if (typeof global !== 'undefined') {
   if (!(global as any).Path2D) (global as any).Path2D = class {};
   if (!(global as any).ImageData) (global as any).ImageData = class {};
 }
-const pdfParse = require('pdf-parse');
+const { PDFParse } = require('pdf-parse');
 // Dynamic import of transformers will be done in getExtractor
 
 // Global cache for the embedding model to avoid reloading
@@ -59,7 +59,8 @@ export async function POST(request: NextRequest) {
     // 1. Parse PDF
     const arrayBuffer = await file.arrayBuffer();
     const buffer = Buffer.from(arrayBuffer);
-    const pdfData = await pdfParse(buffer);
+    const parser = new PDFParse({ data: new Uint8Array(buffer) });
+    const pdfData = await parser.getText();
     const text = pdfData.text;
 
     // 2. Chunking
