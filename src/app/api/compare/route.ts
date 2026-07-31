@@ -101,16 +101,28 @@ export async function POST(request: NextRequest) {
     const llmWithTools = llm.bindTools(tools);
     
     let messages: any[] = [
-      new SystemMessage("You are an expert investment analyst. You MUST use your tools to gather real-time financial data, recent news, and perform accurate calculations before comparing these companies. Do not hallucinate metrics."),
+      new SystemMessage("You are an expert investment analyst. You MUST use your tools to gather real-time financial data, recent news, and perform accurate calculations before comparing these companies. Do not hallucinate metrics. When calling tools, ensure your arguments are valid, tightly-formatted JSON without any line breaks or markdown."),
       new HumanMessage(`Please research and compare these companies objectively: ${companies.join(', ')}. Use your tools to look up their tickers, fetch stock data, and search recent news.`)
     ];
 
     // Simple Agent Loop (max 5 iterations)
     for (let i = 0; i < 5; i++) {
-      const aiMsg = await llmWithTools.invoke(messages);
-      messages.push(aiMsg);
+      let aiMsg;
+      try {
+        aiMsg = await llmWithTools.invoke(messages);
+      } catch (e: any) {
+        console.warn("Groq Tool Invocation Error, retrying...", e.message);
+        try {
+           aiMsg = await llmWithTools.invoke(messages);
+        } catch (retryErr: any) {
+           console.error("Tool invocation failed twice. Proceeding to final output.");
+           break;
+        }
+      }
 
-      if (!aiMsg.tool_calls || aiMsg.tool_calls.length === 0) {
+      if (aiMsg) messages.push(aiMsg);
+
+      if (!aiMsg?.tool_calls || aiMsg.tool_calls.length === 0) {
         break; // Finished info gathering
       }
 
