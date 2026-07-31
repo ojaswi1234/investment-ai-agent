@@ -111,7 +111,7 @@ const getStockData = new DynamicStructuredTool({
       let oneYearGrowth = 'N/A';
       let threeYearGrowth = 'N/A';
       try {
-        const history = await yahooFinance.historical(ticker, { period1: threeYearsAgo, period2: now, interval: '1mo' });
+        const history: any = await yahooFinance.historical(ticker, { period1: threeYearsAgo, period2: now, interval: '1mo' });
         if (history && history.length > 0) {
           const currentPrice = history[history.length - 1]?.close;
           const oneYearAgoPrice = history.length >= 13 ? history[history.length - 13]?.close : null;
