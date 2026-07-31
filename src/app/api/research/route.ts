@@ -100,8 +100,8 @@ const getStockData = new DynamicStructuredTool({
   }),
   func: async ({ ticker }) => {
     try {
-      const quote = await yahooFinance.quote(ticker);
-      const metrics = await yahooFinance.quoteSummary(ticker, { modules: ["financialData", "defaultKeyStatistics"] });
+      const quote: any = await yahooFinance.quote(ticker);
+      const metrics: any = await yahooFinance.quoteSummary(ticker, { modules: ["financialData", "defaultKeyStatistics"] });
       
       const cleanData = {
         symbol: quote.symbol,
