@@ -8,7 +8,7 @@ if (typeof global !== 'undefined') {
   if (!(global as any).ImageData) (global as any).ImageData = class {};
 }
 const pdfParse = require('pdf-parse');
-import { pipeline } from '@xenova/transformers';
+// Dynamic import of transformers will be done in getExtractor
 
 // Global cache for the embedding model to avoid reloading
 let extractor: any = null;
@@ -16,6 +16,7 @@ let extractor: any = null;
 async function getExtractor() {
   if (!extractor) {
     // Lazy load the embedding pipeline
+    const { pipeline } = await import('@xenova/transformers');
     extractor = await pipeline('feature-extraction', 'Xenova/all-MiniLM-L6-v2');
   }
   return extractor;

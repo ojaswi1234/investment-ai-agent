@@ -10,8 +10,8 @@ import { search } from 'duck-duck-scrape';
 const compareSchema = z.object({
   companies: z.array(z.string()),
   comparison_analysis: z.object({
-    relative_strengths: z.record(z.array(z.string())),
-    relative_weaknesses: z.record(z.array(z.string())),
+    relative_strengths: z.record(z.string(), z.array(z.string())),
+    relative_weaknesses: z.record(z.string(), z.array(z.string())),
     valuation_comparison: z.string(),
     growth_comparison: z.string(),
     risk_comparison: z.string(),
@@ -118,7 +118,7 @@ export async function POST(request: NextRequest) {
         const selectedTool = toolsByName[toolCall.name];
         let toolResult = "";
         if (selectedTool) {
-          toolResult = await selectedTool.invoke(toolCall.args);
+          toolResult = await (selectedTool as any).invoke(toolCall.args);
         } else {
           toolResult = `Error: Tool ${toolCall.name} not found`;
         }

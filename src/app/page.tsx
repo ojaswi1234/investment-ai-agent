@@ -377,7 +377,7 @@ export default function Home() {
         {/* Search & Tabs */}
         <div className="flex flex-col md:flex-row justify-between items-center gap-6 mb-12">
           
-          <div className="bg-white/5 backdrop-blur-xl rounded-full p-1 border border-white/10 flex">
+          <div className="bg-white/5 backdrop-blur-xl rounded-2xl md:rounded-full p-1.5 border border-white/10 flex flex-wrap md:flex-nowrap justify-center gap-1 md:gap-0">
             {tabs.map((tab) => (
               <button
                 key={tab.id}
@@ -440,14 +440,14 @@ export default function Home() {
                         </span>
                       </div>
                       
-                      <div className="flex gap-3 mt-6">
+                      <div className="flex flex-wrap gap-3 mt-6">
                         <button onClick={() => addToWatchlist(result.company)} className="glass-panel px-4 py-2 rounded-xl text-sm font-medium hover:bg-white/5 transition-colors flex items-center gap-2">
                           <Activity size={16} /> Add to Watchlist
                         </button>
                         <button onClick={copyShareLink} className="glass-panel border-transparent bg-transparent hover:bg-white/5 px-4 py-2 rounded-xl text-sm font-medium transition-colors flex items-center gap-2 text-slate-300">
                           <Globe size={16} /> Share
                         </button>
-                        <button onClick={exportToPDF} className="glass-panel border-transparent bg-transparent hover:bg-white/5 px-4 py-2 rounded-xl text-sm font-medium transition-colors flex items-center gap-2 text-slate-300">
+                        <button onClick={exportToPDF} className="glass-panel border-transparent bg-transparent hover:bg-white/5 px-4 py-2 rounded-xl text-sm font-medium transition-colors flex items-center gap-2 text-slate-300 w-full sm:w-auto justify-center">
                           <ArrowRight size={16} /> Export
                         </button>
                       </div>

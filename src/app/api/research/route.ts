@@ -24,7 +24,7 @@ const researchSchema = z.object({
   suggested_time_horizon: z.string(),
   peer_comparison: z.object({
     competitors: z.array(z.string()),
-    comparison_metrics: z.record(z.object({
+    comparison_metrics: z.record(z.string(), z.object({
       company: z.number(),
       industry_avg: z.number(),
       interpretation: z.string()
@@ -180,7 +180,7 @@ export async function POST(request: NextRequest) {
         const selectedTool = toolsByName[toolCall.name];
         let toolResult = "";
         if (selectedTool) {
-          toolResult = await selectedTool.invoke(toolCall.args);
+          toolResult = await (selectedTool as any).invoke(toolCall.args);
         } else {
           toolResult = `Error: Tool ${toolCall.name} not found`;
         }
