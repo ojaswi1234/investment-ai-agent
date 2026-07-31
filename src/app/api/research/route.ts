@@ -102,7 +102,33 @@ const getStockData = new DynamicStructuredTool({
   func: async ({ ticker }) => {
     try {
       const quote: any = await yahooFinance.quote(ticker);
-      const metrics: any = await yahooFinance.quoteSummary(ticker, { modules: ["financialData", "defaultKeyStatistics"] });
+      const metrics: any = await yahooFinance.quoteSummary(ticker, { modules: ["financialData", "defaultKeyStatistics", "incomeStatementHistory"] });
+      
+      const now = new Date();
+      const threeYearsAgo = new Date();
+      threeYearsAgo.setFullYear(now.getFullYear() - 3);
+      
+      let oneYearGrowth = 'N/A';
+      let threeYearGrowth = 'N/A';
+      try {
+        const history = await yahooFinance.historical(ticker, { period1: threeYearsAgo, period2: now, interval: '1mo' });
+        if (history && history.length > 0) {
+          const currentPrice = history[history.length - 1]?.close;
+          const oneYearAgoPrice = history.length >= 13 ? history[history.length - 13]?.close : null;
+          const threeYearsAgoPrice = history[0]?.close;
+          
+          if (currentPrice && oneYearAgoPrice) oneYearGrowth = ((currentPrice - oneYearAgoPrice) / oneYearAgoPrice * 100).toFixed(2) + '%';
+          if (currentPrice && threeYearsAgoPrice) threeYearGrowth = ((currentPrice - threeYearsAgoPrice) / threeYearsAgoPrice * 100).toFixed(2) + '%';
+        }
+      } catch (e) {
+        // ignore history errors
+      }
+
+      const incomeHistory = metrics.incomeStatementHistory?.incomeStatementHistory?.map((s: any) => ({
+        date: s.endDate?.fmt,
+        totalRevenue: s.totalRevenue?.raw,
+        netIncome: s.netIncome?.raw,
+      })) || [];
       
       const cleanData = {
         symbol: quote.symbol,
@@ -120,7 +146,12 @@ const getStockData = new DynamicStructuredTool({
         debtToEquity: metrics.financialData?.debtToEquity,
         currentRatio: metrics.financialData?.currentRatio,
         fiftyTwoWeekHigh: quote.fiftyTwoWeekHigh,
-        fiftyTwoWeekLow: quote.fiftyTwoWeekLow
+        fiftyTwoWeekLow: quote.fiftyTwoWeekLow,
+        historical_price_growth: {
+          oneYear: oneYearGrowth,
+          threeYear: threeYearGrowth
+        },
+        annual_financial_statements: incomeHistory
       };
       return JSON.stringify(cleanData);
     } catch (e: any) {
@@ -187,6 +218,9 @@ export async function POST(request: NextRequest) {
         controller.enqueue(new TextEncoder().encode(JSON.stringify(payload) + '\n'));
       };
 
+      // Pad the stream with 4KB of spaces to force Next.js/Vercel to flush the buffer immediately
+      controller.enqueue(new TextEncoder().encode(' '.repeat(4096) + '\n'));
+
       try {
         const llm = new ChatGroq({
           model: model || 'llama-3.3-70b-versatile',
@@ -198,13 +232,15 @@ export async function POST(request: NextRequest) {
         
         let messages: any[] = [
           new SystemMessage("You are an expert investment analyst. You MUST use your tools to gather real-time financial data, recent news, and perform accurate calculations before making an investment recommendation. CRITICAL: Do not hallucinate metrics. You must extract exact numbers from the get_stock_data tool. When calling tools, ensure your arguments are valid, tightly-formatted JSON without any line breaks or markdown."),
-          new HumanMessage(`Please research and analyze this company: ${companyName}. Use your tools to look up the ticker, fetch stock data, search recent news, and calculate metrics. Every claim must be supported by the data you fetch.`)
+          new HumanMessage(`Please research and analyze this company: ${companyName}. Use your tools to look up the ticker, fetch stock data, search recent news, and calculate metrics. CRUCIAL: You MUST use web_search to identify 2-3 top competitors, and then use get_stock_data on those competitors' tickers to perform a robust, data-backed peer comparison. Every claim and comparison must be supported by the data you fetch.`)
         ];
 
-        sendUpdate({ type: 'flag', step: 'web-search' });
+        const uiSteps = ['web-search', 'financial-model', 'peer-analysis', 'sentiment-scan', 'risk-matrix', 'risk-matrix', 'risk-matrix', 'risk-matrix'];
 
-        // Simple Agent Loop (max 5 iterations)
-        for (let i = 0; i < 5; i++) {
+        // Simple Agent Loop (max 8 iterations)
+        for (let i = 0; i < 8; i++) {
+          sendUpdate({ type: 'flag', step: uiSteps[i] || 'risk-matrix' });
+
           let aiMsg;
           try {
             aiMsg = await llmWithTools.invoke(messages);
@@ -213,7 +249,6 @@ export async function POST(request: NextRequest) {
             try {
                aiMsg = await llmWithTools.invoke(messages);
             } catch (retryErr: any) {
-               console.error("Tool invocation failed twice. Proceeding to final output.");
                break;
             }
           }
@@ -225,12 +260,6 @@ export async function POST(request: NextRequest) {
           }
 
           for (const toolCall of aiMsg.tool_calls) {
-            if (toolCall.name === 'get_stock_data' || toolCall.name === 'calculator') {
-              sendUpdate({ type: 'flag', step: 'financial-model' });
-            } else if (toolCall.name === 'web_search') {
-              sendUpdate({ type: 'flag', step: 'sentiment-scan' });
-            }
-
             const selectedTool = toolsByName[toolCall.name];
             let toolResult = "";
             if (selectedTool) {
@@ -243,7 +272,6 @@ export async function POST(request: NextRequest) {
               content: toolResult
             }));
           }
-          sendUpdate({ type: 'flag', step: 'peer-analysis' });
         }
 
         // Final structured output generation
@@ -263,11 +291,12 @@ export async function POST(request: NextRequest) {
     }
   });
 
-  return new NextResponse(stream, { 
+  return new Response(stream, { 
     headers: { 
       'Content-Type': 'application/x-ndjson', 
-      'Cache-Control': 'no-cache, no-transform', 
-      'Connection': 'keep-alive' 
+      'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate', 
+      'Connection': 'keep-alive',
+      'X-Content-Type-Options': 'nosniff'
     } 
   });
 }

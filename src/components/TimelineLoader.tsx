@@ -14,7 +14,25 @@ const steps = [
 ];
 
 export default function TimelineLoader({ activeFlag }: { activeFlag: string }) {
-  const activeStepIndex = Math.max(0, steps.findIndex(s => s.id === activeFlag));
+  const currentStepIndex = Math.max(0, steps.findIndex(s => s.id === activeFlag));
+  const [activeStepIndex, setActiveStepIndex] = useState(0);
+
+  useEffect(() => {
+    // Only move forward, and catch up smoothly if skipping steps
+    if (currentStepIndex > activeStepIndex) {
+      const interval = setInterval(() => {
+        setActiveStepIndex(prev => {
+          if (prev >= currentStepIndex) {
+            clearInterval(interval);
+            return prev;
+          }
+          return prev + 1;
+        });
+      }, 300); // 300ms smooth transition between skipped steps
+      return () => clearInterval(interval);
+    }
+  }, [currentStepIndex, activeStepIndex]);
+
   const progress = Math.min((activeStepIndex / (steps.length - 1)) * 100, 100);
 
   return (
