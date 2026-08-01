@@ -30,10 +30,10 @@ const researchSchema = z.object({
   peer_comparison: z.object({
     competitors: z.array(z.string()),
     comparison_metrics: z.record(z.string(), z.object({
-      company: z.number().nullable().optional().describe("Value for the main target company"),
-      industry_avg: z.number().nullable().optional().describe("Average value of the competitors"),
-      interpretation: z.string().optional()
-    })).describe("Key metrics. MUST use keys 'company' and 'industry_avg'. DO NOT use ticker symbols as keys."),
+      company: z.number().nullable().optional().describe("Numeric value for the main target company"),
+      industry_avg: z.number().nullable().optional().describe("Numeric average value across the competitors"),
+      interpretation: z.string().optional().describe("Brief interpretation of how the company compares")
+    })).describe("A dictionary where EACH KEY is a METRIC NAME (e.g. 'P/E Ratio', 'Revenue Growth %', 'Profit Margin %') and EACH VALUE is an object with 'company' (the target company's number) and 'industry_avg' (the competitors' average number). Example: { 'P/E Ratio': { company: 28.5, industry_avg: 24.1, interpretation: 'Slightly premium valuation' } }. NEVER use 'company' or 'industry_avg' as top-level metric name keys."),
     competitive_position: z.string()
   }),
   historical_context: z.object({
@@ -258,7 +258,7 @@ export async function POST(request: NextRequest) {
         const llmWithTools = llm.bindTools(tools);
         
         let messages: any[] = [
-          new SystemMessage("You are an expert, objective, and highly analytical Wall Street quantitative analyst. Your goal is to provide a balanced and rigorous investment analysis using strict value investing criteria. You MUST use your tools to gather real-time financial data, recent news, and perform accurate calculations. CRITICAL: Do not hallucinate metrics. You must extract exact numbers from the get_stock_data tool. To issue an 'INVEST' rating, the company should generally meet strict quantitative quality metrics: reasonable valuation (e.g., P/E < 25, P/B < 4), healthy leverage (e.g., Debt-to-Equity < 1.5), and solid profitability. If the company is wildly overvalued, highly leveraged, or has deteriorating fundamentals, you MUST issue a 'PASS' rating. Provide a fair, balanced assessment of both their upside potential and their downside risks. When calling tools, ensure your arguments are valid JSON."),
+          new SystemMessage("You are an expert, objective, and highly analytical Wall Street quantitative analyst. Your goal is to provide a balanced and rigorous investment analysis using strict value investing criteria. You MUST use your tools to gather real-time financial data, recent news, and perform accurate calculations. CRITICAL: Do not hallucinate metrics. You must extract exact numbers from the get_stock_data tool. To issue an 'INVEST' rating, the company should generally meet strict quantitative quality metrics: reasonable valuation (e.g., P/E < 25, P/B < 4), healthy leverage (e.g., Debt-to-Equity < 1.5), and solid profitability. If the company is wildly overvalued, highly leveraged, or has deteriorating fundamentals, you MUST issue a 'PASS' rating. Provide a fair, balanced assessment of both their upside potential and their downside risks. When calling tools, ensure your arguments are valid JSON.\n\nCRITICAL SCHEMA RULE for 'comparison_metrics': This field is a dictionary where each KEY is a metric NAME (e.g. 'P/E Ratio', 'Revenue Growth %', 'Debt-to-Equity') and each VALUE is an object containing 'company' (a number) and 'industry_avg' (a number). CORRECT example: { 'P/E Ratio': { company: 28.5, industry_avg: 24.1, interpretation: 'Slight premium' }, 'Profit Margin %': { company: 25.3, industry_avg: 18.7 } }. WRONG example: { company: 100, industry_avg: 80 }. Never use 'company' or 'industry_avg' as top-level keys."),
           new HumanMessage(`Please thoroughly research and analyze this company: ${companyName}. \n\nCRITICAL INSTRUCTIONS TO PREVENT RUSHING:\n1. First, call get_stock_data on ${companyName}.\n2. Second, call web_search to identify recent news and 2-3 top industry competitors.\n3. Third, call get_stock_data on those 2-3 competitors to perform a robust, data-backed peer comparison.\n\nYou must not stop gathering information until you have fetched the stock data for the main company AND its competitors. Every claim and comparison must be supported by the data you fetch.`)
         ];
 
@@ -312,6 +312,11 @@ export async function POST(request: NextRequest) {
         const finalReport = await structuredLlm.invoke(messages);
         
         responseCache.set(cacheKey, JSON.stringify(finalReport));
+        
+        // Send complete flag and wait 1500ms so loader can animate to 100%
+        sendUpdate({ type: 'flag', step: 'complete' });
+        await new Promise(resolve => setTimeout(resolve, 1500));
+        
         sendUpdate({ type: 'result', data: finalReport });
       } catch (e: any) {
         console.error("Research Error:", e);
