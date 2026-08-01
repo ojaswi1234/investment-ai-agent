@@ -709,14 +709,14 @@ export default function Home() {
                       <div className="grid sm:grid-cols-2 gap-4 mb-4">
                         <div className="bg-white/5 p-4 rounded-xl border border-white/5">
                           <div className="text-xs text-slate-500 mb-1">Revenue Trend</div>
-                          <div className="text-lg font-financial text-slate-200">Cur: {result.historical_context.revenue_trend.current}% <span className="text-sm text-slate-500">| 3yr: {result.historical_context.revenue_trend.three_year_avg}%</span></div>
+                          <div className="text-lg font-financial text-slate-200">Cur: {result.historical_context.revenue_trend?.current ?? 'N/A'}% <span className="text-sm text-slate-500">| 3yr: {result.historical_context.revenue_trend?.three_year_avg ?? 'N/A'}%</span></div>
                         </div>
                         <div className="bg-white/5 p-4 rounded-xl border border-white/5">
                           <div className="text-xs text-slate-500 mb-1">Profit Trend</div>
-                          <div className="text-lg font-financial text-slate-200">Cur: {result.historical_context.profit_trend.current}% <span className="text-sm text-slate-500">| 3yr: {result.historical_context.profit_trend.three_year_avg}%</span></div>
+                          <div className="text-lg font-financial text-slate-200">Cur: {result.historical_context.profit_trend?.current ?? 'N/A'}% <span className="text-sm text-slate-500">| 3yr: {result.historical_context.profit_trend?.three_year_avg ?? 'N/A'}%</span></div>
                         </div>
                       </div>
-                      <p className="text-sm text-slate-400">{result.historical_context.pattern_analysis}</p>
+                      <p className="text-sm text-slate-400">{result.historical_context.pattern_analysis || 'No pattern analysis provided.'}</p>
                     </motion.div>
                   )}
 

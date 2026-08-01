@@ -30,26 +30,26 @@ const researchSchema = z.object({
   peer_comparison: z.object({
     competitors: z.array(z.string()),
     comparison_metrics: z.record(z.string(), z.object({
-      company: z.number().nullable().optional(),
-      industry_avg: z.number().nullable().optional(),
+      company: z.number().nullable().optional().describe("Value for the main target company"),
+      industry_avg: z.number().nullable().optional().describe("Average value of the competitors"),
       interpretation: z.string().optional()
-    })),
+    })).describe("Key metrics. MUST use keys 'company' and 'industry_avg'. DO NOT use ticker symbols as keys."),
     competitive_position: z.string()
   }),
   historical_context: z.object({
     revenue_trend: z.object({
-      three_year_avg: z.number(),
-      current: z.number(),
-      trend: z.string()
-    }),
+      three_year_avg: z.number().optional(),
+      current: z.number().optional(),
+      trend: z.string().optional()
+    }).optional(),
     profit_trend: z.object({
-      three_year_avg: z.number(),
-      current: z.number(),
-      trend: z.string()
-    }),
-    key_changes: z.array(z.string()),
-    pattern_analysis: z.string()
-  }),
+      three_year_avg: z.number().optional(),
+      current: z.number().optional(),
+      trend: z.string().optional()
+    }).optional(),
+    key_changes: z.array(z.string()).optional(),
+    pattern_analysis: z.string().optional()
+  }).optional(),
   sources: z.array(z.object({
     type: z.string(),
     year: z.string(),
