@@ -258,8 +258,8 @@ export async function POST(request: NextRequest) {
         const llmWithTools = llm.bindTools(tools);
         
         let messages: any[] = [
-          new SystemMessage("You are an elite, highly skeptical, and ruthless Wall Street value investment analyst. You do NOT hand out 'INVEST' ratings easily; you default to 'PASS' unless the fundamentals are absolutely exceptional. You are actively hunting for flaws, overvaluations, debt issues, declining margins, macro risks, and competitive threats. You MUST use your tools to gather real-time financial data, recent news, and perform accurate calculations. CRITICAL: Do not hallucinate metrics. You must extract exact numbers from the get_stock_data tool. If a company has poor fundamentals, high P/E ratios, or fierce competition, you MUST rate them 'PASS'. When calling tools, ensure your arguments are valid JSON."),
-          new HumanMessage(`Please ruthlessly research and stress-test this company: ${companyName}. Use your tools to look up the ticker, fetch stock data, search recent news, and calculate metrics. CRUCIAL: You MUST use web_search to identify 2-3 top competitors, and then use get_stock_data on those competitors' tickers to perform a robust, data-backed peer comparison. I want you to actively look for reasons to NOT invest. Every claim and comparison must be supported by the data you fetch.`)
+          new SystemMessage("You are an expert, objective, and highly analytical Wall Street quantitative analyst. Your goal is to provide a balanced and rigorous investment analysis. You must carefully weigh both the strengths (growth potential, solid margins, competitive advantages) and weaknesses (overvaluation, high debt, macro risks). You MUST use your tools to gather real-time financial data, recent news, and perform accurate calculations. CRITICAL: Do not hallucinate metrics. You must extract exact numbers from the get_stock_data tool. Issue an 'INVEST' rating if the company's fundamentals, valuation, and growth prospects present a compelling opportunity, and a 'PASS' rating if the risks or valuation outweigh the potential upside. When calling tools, ensure your arguments are valid JSON."),
+          new HumanMessage(`Please thoroughly research and analyze this company: ${companyName}. Use your tools to look up the ticker, fetch stock data, search recent news, and calculate metrics. CRUCIAL: You MUST use web_search to identify 2-3 top competitors, and then use get_stock_data on those competitors' tickers to perform a robust, data-backed peer comparison. I want a fair, balanced assessment of both their upside potential and their downside risks. Every claim and comparison must be supported by the data you fetch.`)
         ];
 
         const uiSteps = ['web-search', 'financial-model', 'peer-analysis', 'sentiment-scan', 'risk-matrix', 'risk-matrix', 'risk-matrix', 'risk-matrix'];
@@ -267,6 +267,9 @@ export async function POST(request: NextRequest) {
         // Simple Agent Loop (max 8 iterations)
         for (let i = 0; i < 8; i++) {
           sendUpdate({ type: 'flag', step: uiSteps[i] || 'risk-matrix' });
+
+          // Enforce minimum time per step to demonstrate thoroughness and sync with loader
+          await new Promise(resolve => setTimeout(resolve, 2000));
 
           let aiMsg;
           try {
@@ -303,7 +306,7 @@ export async function POST(request: NextRequest) {
 
         // Final structured output generation
         sendUpdate({ type: 'flag', step: 'final-synthesis' });
-        messages.push(new SystemMessage("Now, based on the rigorous research you conducted, generate the final comprehensive investment analysis report using the exact provided structured schema format. BE STRICT AND RUTHLESS. Do not sugarcoat. If the valuation is stretched, margins are shrinking, or risks outweigh rewards, you MUST set the recommendation to 'PASS' and assign a low financial health score. Highlight their critical weaknesses and existential threats prominently in the risk matrix and weaknesses array."));
+        messages.push(new SystemMessage("Now, based on the rigorous research you conducted, generate the final comprehensive investment analysis report using the exact provided structured schema format. Be objective and balanced. Highlight both key strengths and critical weaknesses. Set the recommendation to 'INVEST' or 'PASS' based on a fair weighing of the data, and assign an appropriate financial health score."));
         
         const structuredLlm = llm.withStructuredOutput(researchSchema, { name: "research_report" });
         const finalReport = await structuredLlm.invoke(messages);

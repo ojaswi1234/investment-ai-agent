@@ -170,12 +170,15 @@ export async function POST(request: NextRequest) {
     const llmWithTools = llm.bindTools(tools);
     
     let messages: any[] = [
-          new SystemMessage("You are an elite, highly skeptical, and ruthless Wall Street value investment analyst. You do not easily favor any company unless their fundamentals are exceptionally flawless. You are actively hunting for flaws, overvaluations, debt issues, declining margins, macro risks, and competitive threats in each company. You MUST use your tools to gather real-time financial data, recent news, and perform accurate calculations before comparing these companies. CRITICAL: Do not hallucinate metrics. You must extract exact numbers from the get_stock_data tool. When calling tools, ensure your arguments are valid JSON."),
-          new HumanMessage(`Please ruthlessly research and objectively compare these companies: ${companies.join(', ')}. Use your tools to look up their tickers, fetch stock data, and search recent news. Actively look for shortcomings and hidden risks in each. Every comparison must be strictly supported by the data you fetch.`)
+          new SystemMessage("You are an expert, objective, and highly analytical Wall Street quantitative analyst. Your goal is to provide a balanced and rigorous comparative analysis. You must carefully weigh the relative strengths and weaknesses of each company. You MUST use your tools to gather real-time financial data, recent news, and perform accurate calculations before comparing these companies. CRITICAL: Do not hallucinate metrics. You must extract exact numbers from the get_stock_data tool. When calling tools, ensure your arguments are valid JSON."),
+          new HumanMessage(`Please thoroughly research and objectively compare these companies: ${companies.join(', ')}. Use your tools to look up their tickers, fetch stock data, and search recent news. Provide a fair, balanced assessment of their competitive positions. Every comparison must be strictly supported by the data you fetch.`)
     ];
 
     // Simple Agent Loop (max 5 iterations)
     for (let i = 0; i < 5; i++) {
+      // Enforce minimum time per step to demonstrate thoroughness
+      await new Promise(resolve => setTimeout(resolve, 2000));
+
       let aiMsg;
       try {
         aiMsg = await llmWithTools.invoke(messages);
@@ -211,7 +214,7 @@ export async function POST(request: NextRequest) {
     }
 
     // 3. Final structured output generation using Zod Schema
-    messages.push(new SystemMessage("Now, based on the rigorous research you conducted, generate the final comprehensive peer comparison report using the exact provided structured schema format. BE STRICT AND RUTHLESS. Do not sugarcoat. Clearly declare a definitive winner ONLY IF one truly stands out fundamentally; otherwise declare no clear winner. Highlight their critical weaknesses and overvaluations prominently."));
+    messages.push(new SystemMessage("Now, based on the rigorous research you conducted, generate the final comprehensive peer comparison report using the exact provided structured schema format. Be objective and balanced. Clearly declare a definitive winner based on a fair weighing of the data, and highlight both their relative strengths and weaknesses."));
     
     const structuredLlm = llm.withStructuredOutput(compareSchema, { name: "comparison_report" });
     const finalReport = await structuredLlm.invoke(messages);
